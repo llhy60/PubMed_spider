@@ -1,0 +1,476 @@
+(function ($){
+    $(function (){
+        var selectedIds = [];
+        var selTitleExists = false;
+        var RecWithNoTitle = false;
+        var jIdsFromResult = $("#IdsFromResult");
+        var jTA = $("#PubmedSearchItems");
+        var currDb = jTA.data("db");
+        var ajaxCall;
+        $("#PSI_AddToSearchBuilder").on("click",function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            addToSearchBuilder();
+        });
+        $("#PSI_SearchPubmed").on("click",function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            var taVal = $.trim(jTA.val());
+            if (taVal == "")
+                showAlert("Select an item to send to the Search Box");
+            else {
+                jTA.val("");
+                setPubmedSearchItmes("");
+                ajaxCall.always(function(){
+                    window.location="/pubmed?term=" + encodeURIComponent(taVal).replace(/%20/g,'+');;
+                });
+            }
+        });
+        $(document).on("itemsel",function(e,d){
+            selectedIds=d.list.split(',');
+        });
+        
+        function addToSearchBuilder(){
+            clearAlert();
+    	    if (selectedIds.length==0){
+        	    var sSelection = jIdsFromResult.val()? jIdsFromResult.val() :'';
+            	if ('' + sSelection != '')
+        	   	    selectedIds=sSelection.split(',');
+        	   	else
+        	   	    selectedIds = [];
+    	   	}
+    	    if(selectedIds.length==0){
+    	        showAlert("Select an item to send to the search builder");
+    	        return ;
+    	    }
+    	    var ajaxUrl = '/' + currDb + '/?p$l=AjaxServer';
+    	    if (currDb == 'mesh')
+                ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.Mesh_PubmedSearchBuilderHelper:GetPubMedSearchTitles&IdsListIn=' + 
+                    selectedIds.join(',') + '&Db=' + currDb ;
+            else if (currDb == 'nlmcatalog')
+                ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.Nlmcat_PubmedSearchBuilderHelper:GetPubMedSearchTitles&IdsListIn=' + 
+                    selectedIds.join(',') + '&Db=' + currDb ;
+            var ajaxCall = $.ajax({
+                url:ajaxUrl,
+                timeout:10000,
+                dataType:'html'
+            });
+            ajaxCall.done( function(htmlData){
+                try{
+                    var resp = eval('(' + htmlData + ')');
+                    var taCurrVal = jQuery.trim(jTA.val());
+                    selTitleExists = false;
+                    RecWithNoTitle = resp.RecWithNoTitle;
+                    var taVal = buildTitlesQuery(resp.TitlesList,resp.TitlesDelimiter,taCurrVal);
+                    
+                   
+               }catch(e){
+                   console.warn("Error in fetching pubmed titles for PubMed Search Builder - " + e);
+               }
+            });
+            ajaxCall.fail( function(data){
+                console.error("Error in fetching pubmed titles for PubMed Search Builder - " + data);
+            });
+        }
+        
+        jTA.on("titlesBuilt",function(e,v){
+            
+            setNewPubmedSearchItems(v.ntaVal,jQuery.trim(jTA.val()));
+            if (v.selTitleExists === true)
+                selTitleExists = v.selTitleExists;
+                    
+            if ((v.ntaVal == '' && !selTitleExists ) || RecWithNoTitle == 'true' ){
+                showAlert(getGenericErrorMessage());
+                return;
+            }
+        });
+        
+        //do it the easy way for now
+        function getGenericErrorMessage(){
+            if (currDb == "mesh")
+                return "Errors occurred. PubMed search builder can not retrieve citations. Please try again."
+            else if (currDb == "nlmcatalog")
+                return "PubMed search builder only retrieves citations for PubMed journals";
+        }
+        
+        function clearAlert(){
+            $("#pubmed_searchbar_alert").hide();
+        }
+        
+        function showAlert(msg){
+            $("#pubmed_searchbar_alert").html(msg).show();
+        }
+        
+        /* functionality to be implemented by the sub classes, so send a message */
+    	function buildTitlesQuery(titlesString,delimiter,taCurrVal){
+    	    jTA.trigger("buildTitles",{"titles":titlesString,"delim":delimiter,"taCurrVal":taCurrVal,"db":currDb});
+    	}
+    	
+    	function setNewPubmedSearchItems(taVal,taCurrVal){
+            var newVal = "";
+            var boolOp = $('#PSI_opCombo').val();
+            boolOp = boolOp ? boolOp : "OR";
+            if (taCurrVal != "")
+                newVal = (taVal !== '') ? "(" + taCurrVal + ") " + boolOp  + " " + taVal : taCurrVal;
+            else
+                newVal = taVal;
+             
+            jTA.val(newVal);
+            setPubmedSearchItmes(newVal);
+        }
+        
+        function setPubmedSearchItmes(titlesSearchStr){
+    	   //do an ajax to set the session attr of selected titles
+    	    var ajaxUrl = '/' + currDb + '/?p$l=AjaxServer'; 
+            ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.Mesh_PubmedSearchBuilderHelper:SetSelectedTitles&PubmedSearchItemsNew=' + 
+                titlesSearchStr ;
+                
+            var ajaxUrl = '/' + currDb + '/?p$l=AjaxServer';
+    	    if (currDb == 'mesh')
+                ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.Mesh_PubmedSearchBuilderHelper:SetSelectedTitles&PubmedSearchItemsNew=' + 
+                    titlesSearchStr ;
+            else if (currDb == 'nlmcatalog')
+                ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.Nlmcat_PubmedSearchBuilderHelper:SetSelectedTitles&PubmedSearchItemsNew=' + 
+                    titlesSearchStr ;
+                
+            ajaxCall = $.ajax({
+                url:ajaxUrl,
+                timeout:10000,
+                dataType:'html'
+            });
+    	}//setPubmedSearchItmes
+        
+    });//end of DOM ready
+})(jQuery);
+;
+(function($) {
+    $('div.portlet, div.section').each(function() { 
+        PageSectionInit(this); 
+    });
+})(jQuery);
+    
+function PageSectionInit(element) {
+    var post_url = '/myncbi/session-state/',
+        $ = jQuery,
+        self = $(element),
+        anchor = self.find('a.portlet_shutter'),
+        content = self.find('div.portlet_content, div.sensor_content');
+
+    // we need an id on the body, make one if it doesn't exist already
+    // then set toggles attr on anchor to point to body
+    var id = content.attr('id') || $.ui.jig._generateId('portlet_content');
+    
+    // Check if attribute is present
+    if (anchor.attr('toggles'))
+    {
+        // Already initialized
+        return;
+    }
+    
+    anchor.attr('toggles', id);
+    content.attr('id', id);
+
+    // initialize jig toggler with proper configs, then remove some classes that interfere with 
+    // presentation
+    var togglerOpen = anchor.hasClass('shutter_closed')  ?  false  :  true; 
+
+    anchor.ncbitoggler({
+        isIcon: false,
+        initOpen: togglerOpen 
+    })
+        .removeClass('ui-ncbitoggler-no-icon')
+        .removeClass('ui-widget');
+
+    // get rid of ncbitoggler css props that interfere with portlet styling, this is hack
+    // we should change how this works for next jig release
+    anchor.css('position', 'absolute')
+        .css('padding', 0 );
+
+    // trigger an event with the id of the node when closed
+    anchor.bind( 'ncbitogglerclose', function() {
+        anchor.addClass('shutter_closed');
+        
+        $.post(post_url, { section_name: anchor.attr('pgsec_name'), new_section_state: 'true' });
+    });
+
+    anchor.bind('ncbitoggleropen', function() {
+        anchor.removeClass('shutter_closed');
+        $.post(post_url, { section_name: anchor.attr('pgsec_name'), new_section_state: 'false' });
+    });
+
+    /* Popper for brieflink */
+    self.find('li.brieflinkpopper').each( function(){
+        var $this = $( this );
+        var popper = $this.find('a.brieflinkpopperctrl') ;
+        var popnode = $this.find('div.brieflinkpop');
+        var popid = popnode.attr('id') || $.ui.jig._generateId('brieflinkpop');
+        popnode.attr('id', popid);
+        popper.ncbipopper({
+            destSelector: "#" + popid,
+            destPosition: 'top right', 
+            triggerPosition: 'middle left', 
+            hasArrow: true, 
+            arrowDirection: 'right',
+            isTriggerElementCloseClick: false,
+            adjustFit: 'none',
+            openAnimation: 'none',
+            closeAnimation: 'none',
+            delayTimeout : 130
+        });
+    });    
+        
+} // end each loop
+
+;
+(function( $ ){ // pass in $ to self exec anon fn
+    // on page ready
+    $( function() {
+    
+        // Initialize popper
+        $('li.ralinkpopper').each( function(){
+            var $this = $( this );
+            var popper = $this;
+            var popnode = $this.find('div.ralinkpop');
+            var popid = popnode.attr('id') || $.ui.jig._generateId('ralinkpop');
+            popnode.attr('id', popid);
+            popper.ncbipopper({
+                destSelector: "#" + popid,
+                destPosition: 'top right', 
+                triggerPosition: 'middle left', 
+                hasArrow: true, 
+                arrowDirection: 'right',
+                isTriggerElementCloseClick: false,
+                adjustFit: 'none',
+                openAnimation: 'none',
+                closeAnimation: 'none',
+                delayTimeout : 130
+            });
+        }); // end each loop
+        
+    });// end on page ready
+
+})( jQuery );
+
+
+function historyDisplayState(cmd)
+{
+    var post_url = '/myncbi/session-state/';
+
+    if (cmd == 'ClearHT')
+    {
+        if (!confirm('Are you sure you want to delete all your saved Recent Activity?'))
+        {
+            return;
+        }
+    }
+
+    var ajax_request = jQuery.post(post_url, { history_display_state: cmd })
+        .complete(function(jqXHR, textStatus) {    
+        
+            var htdisplay = jQuery('#HTDisplay');
+            var ul = jQuery('#activity');
+
+            if (cmd == 'HTOn') 
+            { 
+                // so that the following msg will show up
+                htdisplay.removeClass();
+                
+                if (jqXHR.status == 408) 
+                { 
+                    htdisplay.html("<p class='HTOn'>Your browsing activity is temporarily unavailable.</p>");
+                    return;
+                }
+                
+                if (htdisplay.find('#activity li').length > 0)
+                {
+                    ul.removeClass('hide');    
+                }
+                else
+                {
+                    htdisplay.addClass('HTOn');
+                }
+                
+            }         
+            else if (cmd == 'HTOff') 
+            {                         
+                ul.addClass('hide'); 
+                htdisplay.removeClass().addClass('HTOff');    // make "Activity recording is turned off." and the turnOn link show up             
+            }
+            else if (cmd == 'ClearHT') 
+            { 
+                if (htdisplay.attr('class') == '') 
+                {                 
+                    htdisplay.addClass('HTOn');  // show "Your browsing activity is empty." message                                  
+
+                    ul.removeClass().addClass('hide'); 
+                    ul.html('');
+                }
+            } 
+        });
+
+}
+
+
+;
+(function($){
+    $(function(){
+        $("#rdDatabase").live("change",function(){setSelectButton();makeXmlHttpCall();});
+        $("#rdFind").live("click",SendLink);
+        $("#rdLinkOption").live("change",SetDescription);
+        //initializeControls
+        (function(){
+            document.getElementById('rdDatabase').selectedIndex = 0;
+            setSelectButton();
+        })();
+        $(document).live("itemsel",function(e,d){selectedIdList=d.list;});
+        var link_descr;
+        var selectedIdList = "";
+        
+        function setSelectButton(){
+            document.getElementById('rdOption').style.display = "none";
+            document.getElementById('rdDescr').style.display = "none";
+            document.getElementById('rdFind').disabled = true;
+            deleteOption("rdLinkOption");
+        }
+        
+        function deleteOption(selectbox){
+            while(document.getElementById(selectbox).childNodes.length>0) {
+                document.getElementById(selectbox).removeChild(document.getElementById(selectbox).childNodes[0])
+            }
+        }
+        
+        function SetDescription(){
+            var selOpt = document.getElementById('rdLinkOption').selectedIndex;
+            document.getElementById('rdDescr').innerHTML = link_descr[selOpt];
+        }
+        
+        function SendLink(e){
+            e.preventDefault();
+            e.stopPropagation();
+            window.location = "/" + $("#rdDatabase").val() + "?linkname=" +  $("#rdLinkOption").val()
+                 + (selectedIdList != '' ? ("&from_uid=" + selectedIdList) : 
+                 ($("#rdqk") && $("#rdqk").val() != '' ? "&querykey=" + $("#rdqk").val() : ""));
+        }
+        
+        function makeXmlHttpCall(){
+            var targetDb = $("#rdDatabase").val();
+            var currDb = $("#DbName").val();
+            var ajaxUrl = '/' + currDb +  '/?p$l=AjaxServer';
+            ajaxUrl = ajaxUrl + '&p$rq=AjaxServer.DiscoAdC.DiscoSectionCol.RelatedDataLinksHelper:XMLHTTPhandler&related_data_db=' 
+                + targetDb + '&Db=' + currDb ;
+            var ajaxCall = $.ajax({
+                url:ajaxUrl,
+                timeout:10000,
+                dataType:'html'
+            });
+            ajaxCall.done( function(htmlData){
+                try{
+                    var resp = '(' + htmlData + ')';
+                    displayFetchedLinks(eval(resp));
+               }catch(e){
+                   console.warn("Error in fetching related data links - " + e);
+               }
+            });
+            ajaxCall.fail( function(data){
+                console.error("Error in fetching related data links - " + data);
+            });
+       }
+       
+       function displayFetchedLinks(json_obj){           
+            var link_name = json_obj.response;
+            link_name = link_name.split(',');
+            
+            var link_disp_name = json_obj.response_disp;
+            link_disp_name = link_disp_name.split(';');
+            
+            link_descr = json_obj.response_descr;
+            link_descr = link_descr.split('||');
+            if(link_descr[0]!=''){
+                document.getElementById('rdDescr').innerHTML = link_descr[0];
+                document.getElementById('rdDescr').style.display = "block";
+            }
+            
+            var link_count = link_name.length;
+            if(link_count>0){
+                for(var countr=0;countr<link_count;countr++){
+                    if(countr==0)
+                        document.getElementById('rdLinkOption').options[countr] = new Option(link_disp_name[countr], link_name[countr], true, false);
+                    else
+                        document.getElementById('rdLinkOption').options[countr] = new Option(link_disp_name[countr], link_name[countr], false, false);
+                }
+            }
+            
+            if(link_count>1)
+                document.getElementById('rdOption').style.display = "block";
+            
+            document.getElementById('rdFind').disabled = false;
+            document.getElementById('rdDescr').style.display = "block";
+            
+            jQuery("#rdFind").ncbibutton("enable");
+            document.getElementById('rdDescr').style.display = "block";
+       }
+        
+    });//end of $(function(){
+    
+})(jQuery);
+;
+(function($){
+    $(function(){
+        $(".relevancead_sort").on("click", function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            var sort = $(this).data('sort');
+            Portal.$send('SubmitSort',{'sort': sort});
+        });    
+        
+     });//end of $(function(){
+    
+})(jQuery);
+
+
+;
+(function($){
+    $(function(){
+        
+        //handle scrolling during open/close
+        (function() {
+        var scrollValue = 0;
+        var dispArea = $("#timelineAd .ui-ncbihistogram-display-area");
+        var shutter = $("#timelineAd")
+            .closest(".portlet")
+            .find(".portlet_shutter")
+                .bind("ncbitoggleropen",
+                    function() {
+                        if (scrollValue) {
+                            dispArea.scrollLeft(scrollValue);
+                        }
+                    }
+                ).click(
+                    function() {
+                        if (!shutter.hasClass("shutter_closed")) {
+                            scrollValue = dispArea.scrollLeft();
+                        }
+                    }
+                );
+        })();
+        
+        $("#timelineAd").on("ncbihistogramselectionmade",hgSelect)
+		    .on("ncbihistogramselectionremoved",hgUnselect);
+		
+		function hgSelect(e,d){
+		    Portal.$send('SetTimelineFilter',{'TimelineYear':d.value,'submit':false});
+		    Portal.$send('SetTimelineBlobID',{'BlobID':$('#timelineAd').data('blobid'),'submit':false});
+		    Portal.$send('Cmd',{'cmd': 'TimelineFilterChanged'});
+		    Portal.$send('TLSubmit', {});
+		}
+		
+		function hgUnselect(e,d){
+		    Portal.$send('SetTimelineFilter',{'TimelineYear':'','submit':false});
+		    Portal.$send('SetTimelineBlobID',{'BlobID':$('#timelineAd').data('blobid'),'submit':false});
+		    Portal.$send('Cmd',{'cmd': 'TimelineFilterChanged'});
+		    Portal.$send('TLSubmit', {});
+		}
+        
+    });
+})(jQuery);
+
